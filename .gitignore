@@ -7,3 +7,9 @@
 # Reignore vim and swap files
 *~
 .*.sw?
+
+# Reignore IntelliJ files
+.idea/
+
+# Reignore virtual environments
+.venv/
