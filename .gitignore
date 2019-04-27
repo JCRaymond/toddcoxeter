@@ -1,0 +1,9 @@
+# Ignore all files
+*
+
+# Unignore files with extensions
+!*.*
+
+# Reignore vim and swap files
+*~
+.*.sw?
