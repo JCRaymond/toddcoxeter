@@ -191,115 +191,88 @@ int** cosets_to_arr(cosets<N>* c) {
 }
 
 struct reltable_row {
-   relation* rel;
-   int* row;
-   int rlen;
-   int left;
-   int right;
-   bool complete;
+   int left_coset;
+   int right_target;
+   int* left_gen;
+   int* right_gen;
    reltable_row* next;
-   reltable_row(): rel(nullptr), row(nullptr), rlen(0), left(0), right(0), complete(true), next(nullptr) {}
-   reltable_row(relation* rel, int i): rel(rel), rlen(rel->len+1), left(0), complete(false), next(nullptr) {
-      this->row = new int[this->rlen];
-      this->row[0] = i;
-      this->row[rel->len] = i;
-      for (int i = 1; i < rel->len; i++) {
-         this->row[i] = -1;
-      }
-      this->right = rel->len;
+   reltable_row(): left_coset(0), right_target(0), left_gen(nullptr), right_gen(nullptr), next(nullptr) {}
+   reltable_row(relation* rel, int i): next(nullptr) {
+      this->left_coset = i;
+      this->right_target = i;
+      this->left_gen = &(rel->terms[0]);
+      this->right_gen = &(rel->terms[rel->len-1]);
    }
    template<int N>
    bool apply_learn(cosets<N>* c) {
-      if (this->complete)
-         return false;
-      while (this->right - this->left > 1) {
-         int left_tgt = c->apply(this->row[this->left], this->rel->terms[this->left]);
-         if (left_tgt < 0) {
+      while (this->left_gen < this->right_gen) {
+         int left_target = c->apply(this->left_coset, *this->left_gen);
+         if (left_target < 0) {
             break;
          }
-         this->left++;
-         this->row[this->left] = left_tgt;
+         this->left_gen++;
+         this->left_coset = left_target;
       }
-      while (this->right - this->left > 1) {
-         int right_coset = c->inv_apply(this->rel->terms[this->right - 1], this->row[this->right]);
+      while (this->left_gen < this->right_gen) {
+         int right_coset = c->inv_apply(*this->right_gen, this->right_target);
          if (right_coset < 0) {
             break;
          }
-         this->right--;
-         this->row[this->right] = right_coset;
+         this->right_gen--;
+         this->right_target = right_coset;
       }
-      if (this->right - this->left == 1) {
-         c->set(this->row[this->left], this->rel->terms[this->left], this->row[this->right]);
-         this->complete = true;
+      if (this->right_gen == this->left_gen) {
+         c->set(this->left_coset, *this->left_gen, this->right_target);
          return true;
       }
       return false;
    }
-   ~reltable_row() {
-      if (this->row != nullptr)
-         delete[] this->row;
-   }
-   void print() {
-      for (int i = 0; i < this->rlen; i++) {
-         cout<<this->row[i]<<' ';
-      }
-      cout<<endl;
-   }
 };
 
+template<int N>
 struct reltable {
-   relation* rel;
+   group<N>* g;
    reltable_row* first;
    reltable_row* last;
-   reltable_row* comp;
-   reltable_row* comp_l;
    int nrows;
-   bool complete;
-   reltable(relation* rel, int rows = 1): rel(rel), nrows(rows), complete(false) {
-      this->first = new reltable_row(this->rel, 0);
-      this->last = this->first;
-      for (int i = 1; i < rows; i++) {
-         this->add_row();
-      }
-      this->comp = new reltable_row();
-      this->comp_l = this->comp;
-   }
-   void add_row() {
-      reltable_row* nrow = new reltable_row(this->rel, this->nrows++);
+   reltable(group<N>* g): g(g), first(nullptr), last(nullptr), nrows(0) {}
+   void add_rows() {
+      reltable_row* nrow = new reltable_row(&(this->g->rels[0]), this->nrows);
       if (this->first == nullptr) {
          this->first = nrow;
          this->last = nrow;
-         this->complete = false;
       }
       else {
          this->last->next = nrow;
          this->last = nrow;
+      } 
+      for (int i = 1; i < this->g->nrels; i++) {
+         nrow = new reltable_row(&(this->g->rels[i]), this->nrows);
+         this->last->next = nrow;
+         this->last = nrow;
       }
+      this->nrows++;
    }
-   template<int N>
    bool apply_learn(cosets<N>* c) {
-      if (complete)
-         return false;
       bool learned = false;
+      reltable_row* next;
       while (this->first != nullptr and this->first->apply_learn(c)) {
-         this->comp_l->next = this->first;
-         this->comp_l = this->first;
          learned = true;
+         next = this->first->next;
+         delete this->first;
+         this->first = next;
       }
       if (this->first == nullptr) {
          this->last = nullptr;
-         this->complete = true;
-         return true;
+         return learned;
       }
       reltable_row* curr = this->first;
-      reltable_row* next;
       while (curr->next != nullptr) {
          next = curr->next;
          if (next->apply_learn(c)) {
             learned = true;
-            this->comp_l->next = next;
-            this->comp_l = next;
             curr->next = next->next;
+            delete next;
          }
          else
             curr = curr->next;
@@ -307,64 +280,26 @@ struct reltable {
       this->last = curr;
       return learned;
    }
-   void print() {
-      cout<<' ';
-      this->rel->print();
-      reltable_row* curr = this->comp->next;
-      while (curr != nullptr) {
-         curr->print();
-         curr = curr->next;
-      }
-      curr = this->first;
-      while (curr != nullptr) {
-         curr->print();
-         curr = curr->next;
-      }
-   }
 };
 
 template<int N>
 cosets<N>* enumerate_cosets(group<N>* g, initializer_list<int> gens) {
    cosets<N>* c = new cosets<N>();
-   reltable* rts[g->nrels];
-   for (int i = 0; i < g->nrels; i++) {
-      rts[i] = new reltable(&(g->rels[i]));
-   }
+   reltable<N> rts(g);
 
-   for (auto it = std::begin(gens); it != std::end(gens); ++it) {
+   for (auto it = std::begin(gens); it != std::end(gens); ++it)
       c->set(0, *it, 0);
-   }
 
-   bool learned;
-   bool completed;
    do {
-      learned = true;
-      completed = true;
-      while (learned) {
-         learned = false;
-
-         for (int i = 0; i < g->nrels; i++) {
-            reltable* rt = rts[i];
-            if (rt->apply_learn(c))
-               learned = true;
-            completed = completed and rt->complete;
-         }
-      }
-
-      if (c->add_coset()) {
-         for (int i = 0; i < g->nrels; i++) {
-            rts[i]->add_row();
-         }
-      }
-      else
-         break;
-   } while(!completed);
+      rts.add_rows();
+      while (rts.apply_learn(c));
+   } while(c->add_coset());
 
    return c;
 }
 
 int main(){
    coxeter<4> cube = {{0,1,-5},{1,2,-3},{2,3,-3}};
-   auto c = enumerate_cosets(&cube,{3});
+   auto c = enumerate_cosets(&cube,{});
    c->print(); 
 }
