@@ -1,18 +1,28 @@
 #include <initializer_list>
 #include <iostream>
 #include <vector>
-#include <iomanip>
-
-using namespace std;
 
 struct relation {
    int len;
    int* terms;
    relation(): len(0), terms(nullptr) {}
-   relation(std::initializer_list<int> terms) {
-      int size = terms.size();
+   relation(int* terms, int size) {
+      initialize(terms, size);
+   }
+   relation(std::initializer_list<int> il_terms) {
+      int* terms = new int[il_terms.size()];
+      int i = 0;
+      for (auto it = std::begin(il_terms); it != std::end(il_terms); ++i, ++it) {
+         terms[i] = *it;
+      }
+      initialize(terms, il_terms.size());
+      delete[] terms;
+   }
+   private:
+
+   void initialize(int* terms, int size) {
       int mult = 1;
-      int last = *(std::end(terms)-1);
+      int last = terms[size-1];
       if (last < 0) {
          mult = -last;
          size--;
@@ -21,17 +31,10 @@ struct relation {
       this->terms = new int[this->len];
       int i = 0;
       for (int j = 0; j < mult; j++) {
-         auto it = std::begin(terms);
-         for (int k = 0; k < size; k++, ++it, i++) {
-            this->terms[i] = *it;
+         for (int k = 0; k < size; k++, i++) {
+            this->terms[i] = terms[k];
          }
       }
-   }
-   void print() {
-      for (int i = 0; i < len; i++) {
-         cout<<this->terms[i]<<' ';
-      }
-      cout<<endl;
    }
 };
 
@@ -56,8 +59,22 @@ struct group {
 template<int N>
 struct coxeter : group<N> {
    coxeter(): group<N>() {}
-   coxeter(initializer_list<relation> prels) {
-      this->nrels = ( N * (N + 1) ) / 2;
+   coxeter(relation* rels, int size) {
+      initialize(rels, size);
+   }
+   coxeter(std::initializer_list<relation> il_rels) {
+      relation* rels = new relation[il_rels.size()];
+      int i = 0;
+      for (auto it = std::begin(il_rels); it != std::end(il_rels); ++i, ++it) {
+         rels[i] = *it;
+      }
+      initialize(rels, il_rels.size());
+      delete[] rels;
+   }
+   private:
+
+   void initialize(relation* rels, int size) {
+      this->nrels = ( N * (N - 1) ) / 2;
       if (this->nrels == 0) {
          this->rels = nullptr;
          return;
@@ -71,8 +88,9 @@ struct coxeter : group<N> {
          }
       }
       int p = 0;
-      for (auto it = std::begin(prels); it != std::end(prels); ++it) {
-         relation r = *it;
+      relation r;
+      for (int i = 0; i < size; i++) {
+         r = rels[i];
          int f = r.terms[0];
          int t = r.terms[1];
          if (t == f)
@@ -84,9 +102,7 @@ struct coxeter : group<N> {
       }
       for (int i = 0; i < N; i++) {
          for (int j = 0; j <= i; j++) {
-            if (i == j)
-               this->rels[p++] = {i, i};
-            else if (!hasrel[i][j])
+            if (i != j and !hasrel[i][j])
                this->rels[p++] = {j, i, -2};
          }
       }
@@ -96,51 +112,30 @@ struct coxeter : group<N> {
    }
 };
 
-struct transform {
-   int frw;
-   int inv;
-   transform(int frw = -1, int inv = -1): frw(frw), inv(inv) {}
-};
-
 template<int N>
 struct cosets {
-   vector<transform>** gens;
+   std::vector<int> gens[N];
    int num_cosets;
    int next_ent_cs;
    int next_ent_gn;
-   cosets(): num_cosets(1), next_ent_cs(0), next_ent_gn(0) {
-      this->gens = new vector<transform>*[N];
+   int alloc_size;
+   cosets(): num_cosets(1), next_ent_cs(0), next_ent_gn(0), alloc_size(32) {
       for (int i=0; i<N; i++) {
-         this->gens[i] = new vector<transform>();
+         this->gens[i] = std::vector<int>(this->alloc_size,-1);
       }
    }
    ~cosets() {
-      for (int i=0; i<N; i++) {
-         delete this->gens[i];
-      }
       delete[] this->gens;
    }
-   transform* find(int gen, int coset) {
-      auto trnsfrms = this->gens[gen];
-      if (trnsfrms->size() < this->num_cosets) {
-         trnsfrms->resize(this->num_cosets);
-      }
-      if (this->num_cosets <= coset) {
-         return new transform();
-      }
-      return &(*trnsfrms)[coset];
-   }
-   transform get(int gen, int coset) {
-      return *(this->find(gen, coset));
-   }
    int apply(int coset, int gen) {
-      return this->find(gen, coset)->frw;
+      return this->gens[gen][coset];
    }
-   int inv_apply(int gen, int target) {
-      return this->find(gen, target)->inv;
+   void set(int coset, int gen, int target) {
+      this->gens[gen][coset] = target;
+      this->gens[gen][target] = coset;
    }
    void find_next_entry() {
-      while (this->apply(this->next_ent_cs, this->next_ent_gn) > -1) {
+      while (this->next_ent_cs < this->num_cosets and this->apply(this->next_ent_cs, this->next_ent_gn) > -1) {
          this->next_ent_gn++;
          if (this->next_ent_gn >= N) {
             this->next_ent_gn %= N;
@@ -148,31 +143,33 @@ struct cosets {
          }
       }
    }
-   void set(int coset, int gen, int target) {
-      this->find(gen, coset)->frw = target;
-      this->find(gen, target)->inv = coset;
-   }
    bool add_coset() {
       this->find_next_entry();
       if (this->next_ent_cs >= this->num_cosets)
          return false;
       int next_coset = this->num_cosets;
       this->num_cosets++;
+      if (this->alloc_size < this->num_cosets) {
+         this->alloc_size <<= 1;
+         for (int gen = 0; gen < N; gen++) {
+            this->gens[gen].resize(this->alloc_size, -1);
+         }
+      }
       this->set(this->next_ent_cs, this->next_ent_gn, next_coset);
       return true;
    }
    void print() {
-      cout<<"    ";
+      std::cout<<"    ";
       for (int j = 0; j < N; j++) {
-         cout<<j<<' ';
+         std::cout<<j<<' ';
       }
-      cout<<endl;
+      std::cout<<std::endl;
       for (int i = 0; i < this->num_cosets; i++) {
-         cout<<i<<" | ";
+         std::cout<<i<<" | ";
          for (int j = 0; j < N; j++) {
-            cout<<this->apply(i,j)<<' ';
+            std::cout<<this->apply(i,j)<<' ';
          }
-         cout<<endl;
+         std::cout<<std::endl;
       }
    }
 };
@@ -207,17 +204,15 @@ struct reltable_row {
    bool apply_learn(cosets<N>* c) {
       while (this->left_gen < this->right_gen) {
          int left_target = c->apply(this->left_coset, *this->left_gen);
-         if (left_target < 0) {
+         if (left_target < 0)
             break;
-         }
          this->left_gen++;
          this->left_coset = left_target;
       }
       while (this->left_gen < this->right_gen) {
-         int right_coset = c->inv_apply(*this->right_gen, this->right_target);
-         if (right_coset < 0) {
+         int right_coset = c->apply(this->right_target, *this->right_gen);
+         if (right_coset < 0)
             break;
-         }
          this->right_gen--;
          this->right_target = right_coset;
       }
@@ -234,23 +229,63 @@ struct reltable {
    group<N>* g;
    reltable_row* first;
    reltable_row* last;
+   reltable_row* unused;
    int nrows;
-   reltable(group<N>* g): g(g), first(nullptr), last(nullptr), nrows(0) {}
+   reltable(group<N>* g): g(g), first(nullptr), last(nullptr), unused(nullptr), nrows(0) {}
+   ~reltable() {
+      reltable_row* curr, *next;
+      curr = this->first;
+      while (curr != nullptr) {
+         next = curr->next;
+         delete curr;
+         curr = next;
+      }
+      curr = this->unused;
+      while (curr != nullptr) {
+         next = curr->next;
+         delete curr;
+         curr = next;
+      }
+   }
    void add_rows() {
-      reltable_row* nrow = new reltable_row(&(this->g->rels[0]), this->nrows);
+      int rownum = 0;
+      reltable_row* row;
       if (this->first == nullptr) {
-         this->first = nrow;
-         this->last = nrow;
+         if (this->unused != nullptr) {
+            row = this->unused;
+            *row = reltable_row(&(this->g->rels[0]), this->nrows);
+            this->unused = this->unused->next;
+         }
+         else {
+            row = new reltable_row(&(this->g->rels[0]), this->nrows);
+         }
+         this->first = row;
+         rownum++;
       }
-      else {
-         this->last->next = nrow;
-         this->last = nrow;
-      } 
-      for (int i = 1; i < this->g->nrels; i++) {
-         nrow = new reltable_row(&(this->g->rels[i]), this->nrows);
-         this->last->next = nrow;
-         this->last = nrow;
+      if (rownum == 0) {
+         if (this->unused != nullptr) {
+            row = this->unused;
+            *row = reltable_row(&(this->g->rels[0]), this->nrows);
+            this->unused = this->unused->next;
+         }
+         else {
+            row = new reltable_row(&(this->g->rels[0]), this->nrows);
+         }
+         this->last->next = row;
+         rownum++;
       }
+      while (this->unused != nullptr and rownum < this->g->nrels) {
+         row->next = this->unused;
+         *(row->next) = reltable_row(&(this->g->rels[rownum]), this->nrows);
+         this->unused = this->unused->next;
+         row = row->next;
+         rownum++;
+      }
+      for (int i = rownum; i < this->g->nrels; i++) {
+         row->next = new reltable_row(&(this->g->rels[i]), this->nrows);
+         row = row->next;
+      }
+      this->last=row;
       this->nrows++;
    }
    bool apply_learn(cosets<N>* c) {
@@ -259,7 +294,8 @@ struct reltable {
       while (this->first != nullptr and this->first->apply_learn(c)) {
          learned = true;
          next = this->first->next;
-         delete this->first;
+         this->first->next = this->unused;
+         this->unused = this->first;
          this->first = next;
       }
       if (this->first == nullptr) {
@@ -272,7 +308,8 @@ struct reltable {
          if (next->apply_learn(c)) {
             learned = true;
             curr->next = next->next;
-            delete next;
+            next->next = this->unused;
+            this->unused = next;
          }
          else
             curr = curr->next;
@@ -283,7 +320,7 @@ struct reltable {
 };
 
 template<int N>
-cosets<N>* enumerate_cosets(group<N>* g, initializer_list<int> gens) {
+cosets<N>* enumerate_cosets(group<N>* g, std::initializer_list<int> gens) {
    cosets<N>* c = new cosets<N>();
    reltable<N> rts(g);
 
@@ -294,12 +331,14 @@ cosets<N>* enumerate_cosets(group<N>* g, initializer_list<int> gens) {
       rts.add_rows();
       while (rts.apply_learn(c));
    } while(c->add_coset());
-
+   
    return c;
 }
 
 int main(){
-   coxeter<4> cube = {{0,1,-5},{1,2,-3},{2,3,-3}};
-   auto c = enumerate_cosets(&cube,{});
-   c->print(); 
+   //coxeter<6> g = {{0,1,-3},{1,2,-3},{2,3,-3},{2,4,-3},{4,5,-3}};
+   coxeter<7> g = {{0,1,-3},{1,2,-3},{2,3,-3},{2,4,-3},{4,5,-3},{5,6,-3}};
+   //coxeter<4> g = {{0,1,-5},{1,2,-3},{2,3,-3}};
+   auto c = enumerate_cosets(&g,{0,1,2});
+   std::cout<<c->num_cosets<<std::endl; 
 }
