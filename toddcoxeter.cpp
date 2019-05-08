@@ -337,8 +337,8 @@ cosets<N>* enumerate_cosets(group<N>* g, std::initializer_list<int> gens) {
 
 int main(){
    //coxeter<6> g = {{0,1,-3},{1,2,-3},{2,3,-3},{2,4,-3},{4,5,-3}};
-   coxeter<7> g = {{0,1,-3},{1,2,-3},{2,3,-3},{2,4,-3},{4,5,-3},{5,6,-3}};
-   //coxeter<4> g = {{0,1,-5},{1,2,-3},{2,3,-3}};
+   //coxeter<7> g = {{0,1,-3},{1,2,-3},{2,3,-3},{2,4,-3},{4,5,-3},{5,6,-3}};
+   coxeter<4> g = {{0,1,-5},{1,2,-3},{2,3,-3}};
    auto c = enumerate_cosets(&g,{0,1,2});
    std::cout<<c->num_cosets<<std::endl; 
 }
