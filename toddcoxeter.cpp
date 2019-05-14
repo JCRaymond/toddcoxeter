@@ -57,162 +57,6 @@ struct group {
    }
 };
 
-template<int N>
-struct coxeter : group<N> {
-   coxeter(): group<N>() {}
-   coxeter(relation* rels, int size) {
-      initialize(rels, size);
-   }
-   coxeter(std::initializer_list<relation> il_rels) {
-      relation* rels = new relation[il_rels.size()];
-      int i = 0;
-      for (auto it = std::begin(il_rels); it != std::end(il_rels); ++i, ++it) {
-         rels[i] = *it;
-      }
-      initialize(rels, il_rels.size());
-      delete[] rels;
-   }
-   enumerated_cosets<N> enumerate_cosets(std::initializer_list<int> gens) {
-      cosets<N>* c = new cosets<N>();
-      reltable<N> rts(this);
-      int* _gens = new int[gens.size()];
-      int p = 0;
-
-      for (auto it = std::begin(gens); it != std::end(gens); ++it) {
-         c->set(0, *it, 0);
-         _gens[p++] = *it;
-      }
-
-      do {
-         rts.add_rows();
-         while (rts.apply_learn(c));
-      } while(c->add_coset());
-      
-      return enumerated_cosets<N>(_gens, gens.size(), c);
-   }
-   enumerated_cosets<N> enumerate_cosets(int[] gens, int n) {
-      cosets<N>* c = new cosets<N>();
-      reltable<N> rts(this);
-      int* _gens = new int[n];
-      int p = 0;
-
-      for (int i = 0; i < n; i++) {
-         c->set(0, gens[i], 0);
-         _gens[p++] = gens[i];
-      }
-
-      do {
-         rts.add_rows();
-         while (rts.apply_learn(c));
-      } while(c->add_coset());
-      
-      return enumerated_cosets<N>(_gens, n, c);
-   }
-   enumerated_cosets<N>* enumerate_all_cosets() {
-      int num_subgroups = 1 << N;
-      int temparr[N];
-      int n, gens; 
-      enumerated_cosets<N>* ec = new enumerated_cosets<N>[num_subgroups];
-      for (int i = 0; i < num_subgroups; i++) {
-         n = 0;
-         for (int j = 0; j < N; j++) {
-            mask = 1 << j;
-            if (i & mask) {
-               gens[n++] = j;
-            }
-         }
-         ec[i] = this->enumerate_cosets(temparr, n);
-      }
-      return ec;
-   }
-   template<int M>
-   sub_coxeter<M>* get_subgroup(int* gens) {
-      int nrels = ( M * (M - 1) ) / 2;
-      relation* rels = new relation[nrels];
-      int gen_map[N];
-      for (int i = 0; i < N; i++) {
-         gen_map[i] = -1;
-      }
-      for (int i = 0; i < M; i++) {
-         gen_map[gens[i]] = i;
-      }
-      int p = 0;
-      relation r;
-      int f,t;
-      for (int i = 0; i < this->nrels; i++) {
-         r = this->rels[i];
-         f = gen_map[r->terms[0]];
-         t = gen_map[r->terms[1]];
-         if (f != -1 and t != -1) {
-            rels[p++] = {f, t, r->len/2};
-         }
-      }
-      return new sub_coxeter<M>(rels, nrels, gens);
-   }
-   private:
-
-   void initialize(relation* rels, int size) {
-      this->nrels = ( N * (N - 1) ) / 2;
-      if (this->nrels == 0) {
-         this->rels = nullptr;
-         return;
-      }
-      this->rels = new relation[this->nrels];
-      bool* hasrel[N];
-      for (int i = 0; i < N; i++) {
-         hasrel[i] = new bool[i+1];
-         for (int j = 0; j <= i; j++) {
-            hasrel[i][j] = false;
-         }
-      }
-      int p = 0;
-      relation r;
-      for (int i = 0; i < size; i++) {
-         r = rels[i];
-         int f = r.terms[0];
-         int t = r.terms[1];
-         if (t == f)
-            continue;
-         this->rels[p++] = r;
-         if (f < t)
-            std::swap(f,t);
-         hasrel[f][t] = true;
-      }
-      for (int i = 0; i < N; i++) {
-         for (int j = 0; j <= i; j++) {
-            if (i != j and !hasrel[i][j])
-               this->rels[p++] = {j, i, -2};
-         }
-      }
-      for (int i = 0; i < N; i++) {
-         delete[] hasrel[i];
-      }
-   }
-};
-
-template<int N>
-struct sub_coxeter : coxeter<N> {
-   int* gen_map;
-   sub_coxeter(): coxeter<N>() {}
-   sub_coxeter(relation* rels, int size, int* gen_map): coxeter<N>(rels, size), gen_map(gen_map) {}
-};
-
-template<int N>
-struct enumerated_cosets {
-   int dim;
-   int* gens;
-   cosets<dim>* sg;
-   cosets<N>* co;
-   enumerated_cosets(): dim(0), gens(nullptr), sg(nullptr), co(nullptr) {}
-   template<int M>
-   enumerated_cosets(int* gens, cosets<M>* sg, cosets<N>* co): gens(gens), dim(M), c(c) {}
-};
-
-template<int N>
-struct solved_coxeter {
-   
-};
-
 struct path_elem {
    int from;
    int gen;
@@ -223,20 +67,34 @@ struct path_elem {
 struct word {
    int* chars;
    int len;
+   word(): chars(nullptr), len(0) {}
+   word(int* chars, int len): chars(chars), len(len) {}
+   word append(word other) {
+      int newlen = this->len + other.len;
+      int* newchars = new int[newlen];
+      int p = 0;
+      for (int i = 0; i < this->len; i++) {
+         newchars[p++] = this->chars[i];
+      }
+      for (int i = 0; i < other.len; i++) {
+         newchars[p++] = other.chars[i];
+      }
+   }
+};
 
-}
+#define DEFAULT_ALLOC_SIZE 32
 
 template<int N>
 struct cosets {
-   std::vector<path_elem> path; 
+   std::vector<path_elem> path;
    std::vector<int> gens[N];
    int num_cosets;
    int next_ent_cs;
    int next_ent_gn;
    int alloc_size;
-   cosets(): num_cosets(1), next_ent_cs(0), next_ent_gn(0), alloc_size(32) {
+   cosets(): num_cosets(1), next_ent_cs(0), next_ent_gn(0), alloc_size(DEFAULT_ALLOC_SIZE) {
       this->path = std::vector<path_elem>(this->alloc_size);
-      path[0] = path_elem(0,0);
+      this->path[0] = path_elem(0, -1);
       for (int i=0; i<N; i++) {
          this->gens[i] = std::vector<int>(this->alloc_size,-1);
       }
@@ -246,6 +104,18 @@ struct cosets {
    }
    int apply(int coset, int gen) {
       return this->gens[gen][coset];
+   }
+   int apply(int coset, word w) {
+      for (int i = 0; i < w.len; i++) {
+         coset = this->apply(coset, w.chars[i]);
+      }
+      return coset;
+   }
+   int apply(int coset, word w, int* gen_map) {
+      for (int i = 0; i < w.len; i++) {
+         coset = this->apply(coset, gen_map[w.chars[i]]);
+      }
+      return coset;
    }
    void set(int coset, int gen, int target) {
       this->gens[gen][coset] = target;
@@ -282,7 +152,41 @@ struct cosets {
       this->set(this->next_ent_cs, this->next_ent_gn, next_coset);
       return true;
    }
-   
+   word* path_to_words(int* gen_map = nullptr) {
+      word* words = new word[this->num_cosets];
+      for (int i = 0; i < this->num_cosets; i++) {
+         words[i] = word();
+      }
+      int size, curr;
+      for (int i = this->num_cosets - 1; i > 0; i--) {
+         if (words[i].len != 0)
+            continue;
+         size = 0;
+         curr = i;
+         while (curr != 0) {
+            size++;
+            curr = this->path[curr].from;
+         }
+         int* chars = new int[size];
+         size--;
+         curr = i;
+         if (gen_map == nullptr) {
+            while (curr != 0) {
+               words[curr] = word(chars, size+1);
+               chars[size--] = this->path[curr].gen;
+               curr = this->path[curr].from;
+            }
+         }
+         else {
+            while (curr != 0) {
+               words[curr] = word(chars, size+1);
+               chars[size--] = gen_map[this->path[curr].gen];
+               curr = this->path[curr].from;
+            } 
+         }
+      }
+      return words;
+   }
    void print() {
       std::cout<<"    ";
       for (int j = 0; j < N; j++) {
@@ -298,19 +202,6 @@ struct cosets {
       }
    }
 };
-
-template<int N>
-int** cosets_to_arr(cosets<N>* c) {
-   int** arr = new int*[c->num_cosets];
-   for (int i = 0; i < c->num_cosets; i++) {
-      int* row = new int[N];
-      arr[i] = row;
-      for (int j = 0; j < N; j++) {
-         row[j] = c->apply(i, j);
-      }
-   }
-   return arr;
-}
 
 struct reltable_row {
    int left_coset;
@@ -373,6 +264,8 @@ struct reltable {
       }
    }
    void add_rows() {
+      if (this->g->nrels == 0)
+         return;
       int rownum = 0;
       reltable_row* row;
       if (this->unused != nullptr) {
@@ -433,26 +326,197 @@ struct reltable {
    }
 };
 
+template<int N>
+struct sub_coxeter;
 
 template<int N>
-void print_words(cosets<N>* c) {
-   std::string* words = new std::string[c->num_cosets];
-   words[0] = "";
-   std::cout<<"0: "<<std::endl;
-   path_elem curr;
-   for (int i = 1; i < c->num_cosets; i++) {
-      curr = c->path[i];
-      words[i] = words[curr.from] + (char)('0' + curr.gen);
-      std::cout<<i<<": "<<words[i]<<std::endl;
+struct coxeter : group<N> {
+   coxeter(): group<N>() {}
+   coxeter(relation* rels, int size) {
+      initialize(rels, size);
+   }
+   coxeter(std::initializer_list<relation> il_rels) {
+      relation* rels = new relation[il_rels.size()];
+      int i = 0;
+      for (auto it = std::begin(il_rels); it != std::end(il_rels); ++i, ++it) {
+         rels[i] = *it;
+      }
+      initialize(rels, il_rels.size());
+      delete[] rels;
+   }
+   cosets<N>* enumerate_cosets(std::initializer_list<int> gens) {
+      if (N == 0)
+         return new cosets<N>();
+      cosets<N>* c = new cosets<N>();
+      reltable<N> rts(this);
+      for (auto it = std::begin(gens); it != std::end(gens); ++it) {
+         c->set(0, *it, 0);
+      }
+
+      do {
+         rts.add_rows();
+         while (rts.apply_learn(c));
+      } while(c->add_coset());
+      
+      return c;
+   }
+   cosets<N>* enumerate_cosets(int* gens, int n) {
+      if (N == 0)
+         return new cosets<N>();
+      cosets<N>* c = new cosets<N>();
+      reltable<N> rts(this);
+
+      for (int i = 0; i < n; i++) {
+         c->set(0, gens[i], 0);
+      }
+
+      do {
+         rts.add_rows();
+         while (rts.apply_learn(c));
+      } while(c->add_coset());
+      
+      return c;
+   }
+   cosets<N>** enumerate_all_cosets() {
+      int num_subgroups = 1 << N;
+      int temparr[N];
+      int n, mask; 
+      cosets<N>** ec = new cosets<N>*[num_subgroups];
+      for (int i = 0; i < num_subgroups; i++) {
+         n = 0;
+         mask = 0;
+         for (int j = 0; j < N; j++) {
+            mask = 1 << j;
+            if (i & mask) {
+               temparr[n++] = j;
+            }
+         }
+         ec[i] = this->enumerate_cosets(temparr, n);
+      }
+      return ec;
+   }
+   template<int M>
+   sub_coxeter<M>* get_subgroup(int* gens) {
+      int nrels = ( M * (M - 1) ) / 2;
+      relation* rels = new relation[nrels];
+      int gen_map[N];
+      for (int i = 0; i < N; i++) {
+         gen_map[i] = -1;
+      }
+      for (int i = 0; i < M; i++) {
+         gen_map[gens[i]] = i;
+      }
+      int p = 0;
+      relation r;
+      int f,t;
+      for (int i = 0; i < this->nrels; i++) {
+         r = this->rels[i];
+         f = gen_map[r.terms[0]];
+         t = gen_map[r.terms[1]];
+         if (f != -1 and t != -1) {
+            rels[p++] = {f, t, -r.len/2};
+         }
+      }
+      return new sub_coxeter<M>(rels, nrels, gens);
+   }
+   private:
+
+   void initialize(relation* rels, int size) {
+      this->nrels = ( N * (N - 1) ) / 2;
+      if (this->nrels == 0) {
+         this->rels = nullptr;
+         return;
+      }
+      this->rels = new relation[this->nrels];
+      bool* hasrel[N];
+      for (int i = 0; i < N; i++) {
+         hasrel[i] = new bool[i+1];
+         for (int j = 0; j <= i; j++) {
+            hasrel[i][j] = false;
+         }
+      }
+      int p = 0;
+      relation r;
+      for (int i = 0; i < size; i++) {
+         r = rels[i];
+         int f = r.terms[0];
+         int t = r.terms[1];
+         if (t == f)
+            continue;
+         this->rels[p++] = r;
+         if (f < t)
+            std::swap(f,t);
+         hasrel[f][t] = true;
+      }
+      for (int i = 0; i < N; i++) {
+         for (int j = 0; j <= i; j++) {
+            if (i != j and !hasrel[i][j])
+               this->rels[p++] = {j, i, -2};
+         }
+      }
+      for (int i = 0; i < N; i++) {
+         delete[] hasrel[i];
+      }
+   }
+};
+
+template<int N>
+struct sub_coxeter : coxeter<N> {
+   int* gen_map;
+   sub_coxeter(): coxeter<N>() {}
+   sub_coxeter(relation* rels, int size, int* gen_map): coxeter<N>(rels, size), gen_map(gen_map) {}
+};
+
+void print_words(word* words, int n, int* gen_map = nullptr) {
+   word w;
+   for (int i = 0; i < n; i++) {
+      w = words[i];
+      std::cout<<i<<": ";
+      for (int j = 0; j < w.len; j++) {
+         if (gen_map != nullptr)
+            std::cout<<gen_map[w.chars[j]];
+         else
+            std::cout<<w.chars[j];
+      }
+      std::cout<<std::endl;
    }
 }
 
 int main(){
    //coxeter<6> g = {{0,1,-3},{1,2,-3},{2,3,-3},{2,4,-3},{4,5,-3}};
    //coxeter<7> g = {{0,1,-3},{1,2,-3},{2,3,-3},{2,4,-3},{4,5,-3},{5,6,-3}};
-   //coxeter<4> g = {{0,1,-5},{1,2,-3},{2,3,-3}};
-   coxeter<3> g = {{0,1,-4},{1,2,-3}};
-   auto c = enumerate_cosets(&g,{0,2});
-   std::cout<<c->num_cosets<<std::endl; 
-   print_words(c);
+   coxeter<4> g = {{0,1,-5},{1,2,-3},{2,3,-3}};
+   //coxeter<3> g = {{0,1,-4},{1,2,-3}};
+   int gl[] = {0,1,2};
+   const int n = 2;
+   auto sg = g.get_subgroup<n>(&gl[0]);
+
+   auto t_c = g.enumerate_cosets({});
+  
+   print_words(t_c->path_to_words(), t_c->num_cosets);
+   std::cout<<std::endl;
+
+   auto sg_c = g.enumerate_cosets(gl, n);
+   auto sg_c_words = sg_c->path_to_words();
+   print_words(sg_c_words, sg_c->num_cosets);
+   std::cout<<std::endl;
+
+   auto e_sg = sg->enumerate_cosets({});
+   auto e_sg_words = e_sg->path_to_words(sg->gen_map);
+   print_words(e_sg_words, e_sg->num_cosets);
+   std::cout<<std::endl;
+
+   int face_points[t_c->num_cosets];
+   int coset;
+   for (int i = 0; i < e_sg->num_cosets; i++) {
+      coset = t_c->apply(0, e_sg_words[i]);
+      for (int j = 0; j < sg_c->num_cosets; j++) {
+         face_points[t_c->apply(coset, sg_c_words[j])] = j;
+      }
+   }
+
+   for (int i = 0; i < t_c->num_cosets; i++) {
+      std::cout<<i<<": "<<face_points[i]<<std::endl;
+   }
+   std::cout<<std::endl;
 }
